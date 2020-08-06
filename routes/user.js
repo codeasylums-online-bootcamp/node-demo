@@ -2,58 +2,24 @@ const express = require('express')
 const router = express.Router()
 const mongoose = require('mongoose')
 const bcryptjs = require('bcryptjs')
+const jwt = require('jsonwebtoken')
 
+const config = require('../config.json')
+const secret = config.secret
+
+const auth = require('../middleware/authorization')
 
 const userModel = require('../models/users')
 
+const {createUser,listUsers, listUser} = require('../controllers/users')
+
 // to create a new user
-router.post('/',(req,res)=>{
-    const email = req.body.email
-    const password = req.body.password
-
-    const newUser = new userModel({
-        _id: new mongoose.Types.ObjectId(),
-        email: email,
-        password: bcryptjs.hashSync(password)
-    })
-
-    newUser.save((err,_) => {
-        if(err){
-            res.json(err).status(400)
-        }
-        else{
-            res.json({msg:"User registered"}).status(201)
-        }
-    })
-})
+router.post('/',createUser)
 
 // get all the users
-router.get('/',(req,res)=>{
-    userModel
-    .find()
-    .select('-password -__v')
-    .exec()
-    .then(users => {
-        res.json({users:users}).status(200)
-    })
-    .catch(err => {
-        res.json({err:err}).status(501)
-    })
-})
+router.get('/',listUsers)
 
-router.get('/:id',(req,res)=>{
-    const id = req.params.id
-    userModel
-    .findById(id)
-    .select('-password -__v')
-    .exec()
-    .then(user => {
-        res.json({user:user}).status(200)
-    })
-    .catch(err => {
-        res.json({err:err}).status(501)
-    })
-})
+router.get('/:id',listUser)
 
 router.post('/login',(req,res)=>{
     const email = req.body.email
@@ -65,7 +31,12 @@ router.post('/login',(req,res)=>{
     .then(doc=>{
         if(doc){
             if(bcryptjs.compareSync(password, doc.password)){
-                res.json({msg:"Successfull login"}).status(200)
+                // successfull login
+                const token = jwt.sign({ // algorithm, exp, data, secret
+                    exp: Math.floor(Date.now() / 1000) + (60*60),
+                    data: doc._id
+                }, secret, { algorithm: 'HS512'}) // secret <- config.json
+                res.json({token:token}).status(200)
             }
             else{
                 res.json({msg:"Username/Password mismatch"}).status(403)
@@ -80,7 +51,7 @@ router.post('/login',(req,res)=>{
     })
 })
 
-router.put('/change-password',(req,res)=>{
+router.put('/change-password', auth,(req,res)=>{
     const email = req.body.email
     const password = req.body.password
     const newPassword = req.body.newPassword
